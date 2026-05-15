@@ -22,6 +22,12 @@ class SettingsResponse(BaseModel):
     bot_token_masked: Optional[str] = None
     webhook_url: Optional[str] = None
     webhook_active: bool = False
+    openrouter_api_key_set: bool = False
+    openrouter_api_key_masked: Optional[str] = None
+    openrouter_model: str = "openai/gpt-4o-mini"
+    openrouter_system_prompt: str = "You are a helpful Telegram support assistant. Reply clearly and concisely."
+    openrouter_history_limit: int = 10
+    ai_auto_reply_enabled: bool = False
 
     class Config:
         from_attributes = True
@@ -33,6 +39,22 @@ class BotTokenUpdate(BaseModel):
 
 class WebhookRegister(BaseModel):
     webhook_url: str
+
+
+class OpenRouterSettingsUpdate(BaseModel):
+    openrouter_api_key: Optional[str] = None
+    openrouter_model: str
+    openrouter_system_prompt: str
+    openrouter_history_limit: int
+    ai_auto_reply_enabled: bool
+
+
+def mask_secret(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    if len(value) <= 12:
+        return value[:4] + "..."
+    return value[:8] + "..." + value[-4:]
 
 
 async def get_or_create_settings(db: AsyncSession) -> Settings:
@@ -51,14 +73,17 @@ async def get_settings(
     current_user: User = Depends(get_current_user),
 ):
     settings = await get_or_create_settings(db)
-    masked = None
-    if settings.bot_token:
-        masked = settings.bot_token[:8] + "..." + settings.bot_token[-4:]
     return SettingsResponse(
         bot_token_set=bool(settings.bot_token),
-        bot_token_masked=masked,
+        bot_token_masked=mask_secret(settings.bot_token),
         webhook_url=settings.webhook_url,
         webhook_active=settings.webhook_active,
+        openrouter_api_key_set=bool(settings.openrouter_api_key),
+        openrouter_api_key_masked=mask_secret(settings.openrouter_api_key),
+        openrouter_model=settings.openrouter_model,
+        openrouter_system_prompt=settings.openrouter_system_prompt,
+        openrouter_history_limit=settings.openrouter_history_limit,
+        ai_auto_reply_enabled=settings.ai_auto_reply_enabled,
     )
 
 
@@ -72,6 +97,31 @@ async def update_bot_token(
     settings.bot_token = data.bot_token
     settings.updated_at = datetime.utcnow()
     return {"status": "ok", "message": "Bot token updated"}
+
+
+@router.put("/openrouter")
+async def update_openrouter_settings(
+    data: OpenRouterSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if data.openrouter_history_limit < 1 or data.openrouter_history_limit > 50:
+        raise HTTPException(status_code=400, detail="History limit must be between 1 and 50")
+    if not data.openrouter_model.strip():
+        raise HTTPException(status_code=400, detail="OpenRouter model is required")
+    if not data.openrouter_system_prompt.strip():
+        raise HTTPException(status_code=400, detail="System prompt is required")
+
+    settings = await get_or_create_settings(db)
+    api_key = data.openrouter_api_key.strip() if data.openrouter_api_key else ""
+    if api_key:
+        settings.openrouter_api_key = api_key
+    settings.openrouter_model = data.openrouter_model.strip()
+    settings.openrouter_system_prompt = data.openrouter_system_prompt.strip()
+    settings.openrouter_history_limit = data.openrouter_history_limit
+    settings.ai_auto_reply_enabled = data.ai_auto_reply_enabled
+    settings.updated_at = datetime.utcnow()
+    return {"status": "ok", "message": "OpenRouter settings updated"}
 
 
 @router.post("/webhook/register")

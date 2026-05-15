@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateBotToken, registerWebhook, deleteWebhook, getWebhookStatus } from '../api/settings'
+import {
+  getSettings,
+  updateBotToken,
+  updateOpenRouterSettings,
+  registerWebhook,
+  deleteWebhook,
+  getWebhookStatus,
+} from '../api/settings'
 
 export default function SettingsPage() {
   const [botToken, setBotToken] = useState('')
@@ -8,6 +15,13 @@ export default function SettingsPage() {
   const [botTokenMasked, setBotTokenMasked] = useState<string | null>(null)
   const [botTokenSet, setBotTokenSet] = useState(false)
   const [webhookInfo, setWebhookInfo] = useState<any>(null)
+  const [openRouterApiKey, setOpenRouterApiKey] = useState('')
+  const [openRouterApiKeySet, setOpenRouterApiKeySet] = useState(false)
+  const [openRouterApiKeyMasked, setOpenRouterApiKeyMasked] = useState<string | null>(null)
+  const [openRouterModel, setOpenRouterModel] = useState('openai/gpt-4o-mini')
+  const [openRouterSystemPrompt, setOpenRouterSystemPrompt] = useState('')
+  const [openRouterHistoryLimit, setOpenRouterHistoryLimit] = useState(10)
+  const [aiAutoReplyEnabled, setAiAutoReplyEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -24,6 +38,12 @@ export default function SettingsPage() {
       setBotTokenMasked(data.bot_token_masked)
       setWebhookUrl(data.webhook_url || '')
       setWebhookActive(data.webhook_active)
+      setOpenRouterApiKeySet(data.openrouter_api_key_set)
+      setOpenRouterApiKeyMasked(data.openrouter_api_key_masked)
+      setOpenRouterModel(data.openrouter_model || 'openai/gpt-4o-mini')
+      setOpenRouterSystemPrompt(data.openrouter_system_prompt || '')
+      setOpenRouterHistoryLimit(data.openrouter_history_limit || 10)
+      setAiAutoReplyEnabled(data.ai_auto_reply_enabled)
 
       if (data.bot_token_set) {
         const status = await getWebhookStatus()
@@ -51,6 +71,34 @@ export default function SettingsPage() {
       showMessage('success', 'Bot token saved successfully')
     } catch (err: any) {
       showMessage('error', err.response?.data?.detail || 'Failed to save token')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveOpenRouter = async () => {
+    if (!openRouterModel.trim() || !openRouterSystemPrompt.trim()) return
+    setSaving(true)
+    try {
+      await updateOpenRouterSettings({
+        openrouter_api_key: openRouterApiKey.trim() || undefined,
+        openrouter_model: openRouterModel.trim(),
+        openrouter_system_prompt: openRouterSystemPrompt.trim(),
+        openrouter_history_limit: openRouterHistoryLimit,
+        ai_auto_reply_enabled: aiAutoReplyEnabled,
+      })
+      if (openRouterApiKey.trim()) {
+        setOpenRouterApiKeySet(true)
+        setOpenRouterApiKeyMasked(
+          openRouterApiKey.length > 12
+            ? `${openRouterApiKey.slice(0, 8)}...${openRouterApiKey.slice(-4)}`
+            : `${openRouterApiKey.slice(0, 4)}...`,
+        )
+        setOpenRouterApiKey('')
+      }
+      showMessage('success', 'OpenRouter settings saved successfully')
+    } catch (err: any) {
+      showMessage('error', err.response?.data?.detail || 'Failed to save OpenRouter settings')
     } finally {
       setSaving(false)
     }
@@ -143,6 +191,109 @@ export default function SettingsPage() {
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium transition-colors"
             >
               Save
+            </button>
+          </div>
+        </div>
+
+        {/* OpenRouter Section */}
+        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+              OpenRouter AI Auto-Reply
+            </h3>
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                aiAutoReplyEnabled
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400'
+                  : 'bg-gray-100 dark:bg-gray-600 text-gray-800 dark:text-gray-300'
+              }`}
+            >
+              {aiAutoReplyEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+
+          <div className="space-y-4">
+            {openRouterApiKeySet && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 dark:text-gray-400">Current API key:</span>
+                <code className="text-sm bg-gray-200 dark:bg-gray-600 px-2 py-1 rounded">
+                  {openRouterApiKeyMasked}
+                </code>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              <input
+                id="ai-auto-reply"
+                type="checkbox"
+                checked={aiAutoReplyEnabled}
+                onChange={(e) => setAiAutoReplyEnabled(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <label htmlFor="ai-auto-reply" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Enable AI auto-reply
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                OpenRouter API key
+              </label>
+              <input
+                type="text"
+                value={openRouterApiKey}
+                onChange={(e) => setOpenRouterApiKey(e.target.value)}
+                placeholder="Paste OpenRouter API key..."
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Model
+              </label>
+              <input
+                type="text"
+                value={openRouterModel}
+                onChange={(e) => setOpenRouterModel(e.target.value)}
+                placeholder="openai/gpt-4o-mini"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                System prompt
+              </label>
+              <textarea
+                value={openRouterSystemPrompt}
+                onChange={(e) => setOpenRouterSystemPrompt(e.target.value)}
+                rows={6}
+                placeholder="Tell the AI how it should reply..."
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 text-sm resize-y"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                History messages
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={openRouterHistoryLimit}
+                onChange={(e) => setOpenRouterHistoryLimit(Number(e.target.value))}
+                className="w-32 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+            </div>
+
+            <button
+              onClick={handleSaveOpenRouter}
+              disabled={!openRouterModel.trim() || !openRouterSystemPrompt.trim() || saving}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Save OpenRouter Settings
             </button>
           </div>
         </div>
